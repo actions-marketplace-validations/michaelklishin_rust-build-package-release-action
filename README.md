@@ -1,6 +1,6 @@
 # rust-build-package-release-action
 
-An opinionated, conventions-based GitHub Action that automates release workflows for Rust projects using Nu shell scripts.
+An opinionated, conventions-based GitHub Action that automates release workflows for Rust projects.
 
 ## Features
 
@@ -13,6 +13,9 @@ An opinionated, conventions-based GitHub Action that automates release workflows
  * Produce SBOMs in SPDX and CycloneDX formats
  * Extract release notes from your changelog
  * Compute SHA256, SHA512, and BLAKE2 checksums
+ * Publish library crates to crates.io using [Trusted Publishing](https://crates.io/docs/trusted-publishing) (OIDC, no stored API tokens)
+
+Most features target binary releases, but **library crates** can use a focused subset — Trusted Publishing, version and changelog validation, and GitHub Releases. See [Library Crates](#library-crates).
 
 ## Conventions
 
@@ -21,7 +24,7 @@ This action expects:
  1. A certain [changelog format](https://github.com/rabbitmq/rabbitmqadmin-ng/blob/main/CHANGELOG.md): versions as `## v{version} ({date})` headers
  2. Tag format: tags prefixed with `v` (e.g., `v1.2.3`, `v1.0.0-beta.1`)
  3. Versioning: `MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]` format
- 4. Version variable: a repository variable `NEXT_RELEASE_VERSION` containing the expected next version (used by `validate-version`)
+ 4. Version extraction: `validate-version` extracts the version from the git tag (optionally validates against an expected version)
 
 ---
 
@@ -29,7 +32,7 @@ This action expects:
 
 ```yaml
 # Build a release binary (auto-selects platform from target)
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release
     target: x86_64-unknown-linux-gnu
@@ -39,7 +42,7 @@ This action expects:
 Or use platform-specific commands:
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux
     target: x86_64-unknown-linux-gnu
@@ -63,15 +66,15 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: rustup toolchain install stable --profile minimal
-      - uses: michaelklishin/rust-build-package-release-action@v1
+      - uses: michaelklishin/rust-build-package-release-action@v3
         id: build
         with:
           command: release
           target: x86_64-unknown-linux-gnu
           archive: 'true'
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2.6.1
         with:
           files: target/x86_64-unknown-linux-gnu/release/*.tar.gz
 ```
@@ -115,7 +118,7 @@ Standard Cargo build flags. These map directly to familiar `cargo build` options
 #### Example: Cross-compile aarch64-linux-musl with zigbuild
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux
     target: aarch64-unknown-linux-musl
@@ -126,7 +129,7 @@ Standard Cargo build flags. These map directly to familiar `cargo build` options
 #### Example: Static musl build with specific features
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux
     target: x86_64-unknown-linux-musl
@@ -142,7 +145,7 @@ Standard Cargo build flags. These map directly to familiar `cargo build` options
 For projects that require a frontend build (WASM, npm, etc.) before `cargo build`:
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux
     target: x86_64-unknown-linux-gnu
@@ -161,7 +164,7 @@ For Alpine/container workflows where the build happens in a separate step:
     cargo build --release --target x86_64-unknown-linux-musl
 
 # Package the pre-built binary
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux
     target: x86_64-unknown-linux-musl
@@ -183,7 +186,7 @@ Control artifact generation and checksums.
 #### Example: Archive with multiple checksums
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux
     target: x86_64-unknown-linux-gnu
@@ -207,7 +210,7 @@ For `extract-changelog` and `validate-changelog` commands.
 #### Example: Extract changelog
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: extract-changelog
     # version auto-detected from git tag (e.g., v1.2.3 -> 1.2.3)
@@ -220,15 +223,26 @@ For `validate-version` command.
 | Input | Description | Default |
 |-------|-------------|---------|
 | `tag` | Git tag to validate | `GITHUB_REF_NAME` |
-| `expected-version` | Expected version to match (required) | — |
+| `expected-version` | Expected version to validate against the tag (optional) | — |
 | `validate-cargo-toml` | Also verify Cargo.toml version matches tag | `false` |
 
-#### Example: Validate version
-
-Set a repository variable `NEXT_RELEASE_VERSION` (e.g., `1.2.3`) in your repo settings, then:
+#### Example: Extract version from tag
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
+  id: validate
+  with:
+    command: validate-version
+```
+
+The version is extracted from the git tag and available as `${{ steps.validate.outputs.version }}`.
+
+#### Example: Validate version against expected value
+
+For binary projects, you can optionally validate the tag against an expected version:
+
+```yaml
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: validate-version
     expected-version: ${{ vars.NEXT_RELEASE_VERSION }}
@@ -239,10 +253,9 @@ This fails the build if the git tag doesn't match the expected version, catching
 #### Example: Validate version with Cargo.toml check
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: validate-version
-    expected-version: ${{ vars.NEXT_RELEASE_VERSION }}
     validate-cargo-toml: 'true'
 ```
 
@@ -251,7 +264,7 @@ This fails the build if the git tag doesn't match the expected version, catching
 For `validate-changelog` command. Fails fast if no changelog entry exists for the release version.
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: validate-changelog
     version: '1.2.3'  # Or omit to auto-detect from git tag
@@ -273,14 +286,14 @@ For `collect-artifacts` command. Scans a directory, computes checksums, and outp
   with:
     path: artifacts
 
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   id: collect
   with:
     command: collect-artifacts
     artifacts-dir: artifacts
     base-url: 'https://github.com/${{ github.repository }}/releases/download/v${{ needs.validate.outputs.version }}'
 
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: generate-homebrew
     version: ${{ needs.validate.outputs.version }}
@@ -317,7 +330,7 @@ Shared metadata for Linux packages (deb/rpm/apk), Homebrew, AUR, and Winget.
 #### Example: Debian package with dependencies
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: release-linux-deb
     target: x86_64-unknown-linux-gnu
@@ -340,7 +353,7 @@ For `generate-sbom` command.
 #### Example: Generate SBOMs
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: generate-sbom
     sbom-format: 'spdx,cyclonedx'
@@ -353,6 +366,7 @@ For `generate-homebrew` command. SHA256 values come from build step outputs.
 | Input | Description | Default |
 |-------|-------------|---------|
 | `brew-class` | Ruby class name for formula | Auto-generated |
+| `brew-copyright` | Copyright holder for MIT license header (e.g. `2025-2026 Author`) | — |
 | `brew-macos-arm64-url` | macOS ARM64 artifact URL | — |
 | `brew-macos-arm64-sha256` | macOS ARM64 SHA256 | — |
 | `brew-macos-x64-url` | macOS x64 artifact URL | — |
@@ -366,7 +380,7 @@ For `generate-homebrew` command. SHA256 values come from build step outputs.
 #### Example: Generate Homebrew formula
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: generate-homebrew
     version: ${{ needs.build.outputs.version }}
@@ -387,7 +401,7 @@ For `sign-artifact` command.
 #### Example: Sign artifact
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: sign-artifact
     artifact: 'target/release/myapp-1.0.0.tar.gz'
@@ -410,7 +424,7 @@ For `format-release` command.
 #### Example: Format release body with installation instructions
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: format-release
     version: '1.0.0'
@@ -437,7 +451,7 @@ For `generate-aur` command.
 #### Example: Generate AUR PKGBUILD
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: generate-aur
     version: '1.0.0'
@@ -469,7 +483,7 @@ For `generate-winget` command.
 #### Example: Generate Winget manifest
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: generate-winget
     version: '1.0.0'
@@ -498,7 +512,7 @@ With `download-from-release: true`, the action fetches artifacts from the curren
 #### Example: Get latest release version
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   id: version
   with:
     command: get-release-version
@@ -508,7 +522,7 @@ With `download-from-release: true`, the action fetches artifacts from the curren
 If `version` is provided, it's used directly. Otherwise, the latest release tag is fetched from the GitHub API and the `v` prefix stripped. No authentication is required for public repos. For private repos, set `GITHUB_TOKEN` or `GH_TOKEN` in the environment:
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   id: version
   with:
     command: get-release-version
@@ -519,7 +533,7 @@ If `version` is provided, it's used directly. Otherwise, the latest release tag 
 #### Example: Verify packages from release
 
 ```yaml
-- uses: michaelklishin/rust-build-package-release-action@v1
+- uses: michaelklishin/rust-build-package-release-action@v3
   with:
     command: test-deb
     download-from-release: true
@@ -539,7 +553,7 @@ See `examples/verify-artifacts.yml` for a complete multi-distribution testing wo
 | `release` | Unified build command (auto-selects platform from target triple) |
 | `extract-changelog` | Extract release notes from CHANGELOG.md |
 | `validate-changelog` | Validate changelog has entry for version |
-| `validate-version` | Validate git tag matches expected version (optionally checks Cargo.toml) |
+| `validate-version` | Extract and validate version from git tag (optionally checks expected version and Cargo.toml) |
 | `get-version` | Get version from Cargo.toml |
 | `collect-artifacts` | Collect artifacts, compute checksums, generate SHA256SUMS |
 | `generate-sbom` | Generate SPDX and CycloneDX SBOMs |
@@ -626,8 +640,8 @@ jobs:
     outputs:
       version: ${{ steps.validate.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: michaelklishin/rust-build-package-release-action@v1
+      - uses: actions/checkout@v6
+      - uses: michaelklishin/rust-build-package-release-action@v3
         id: validate
         with:
           command: validate-version
@@ -648,9 +662,9 @@ jobs:
             command: release-windows
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: rustup toolchain install stable --profile minimal
-      - uses: michaelklishin/rust-build-package-release-action@v1
+      - uses: michaelklishin/rust-build-package-release-action@v3
         id: build
         with:
           command: ${{ matrix.command }}
@@ -666,8 +680,8 @@ jobs:
     needs: [validate, build]
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: michaelklishin/rust-build-package-release-action@v1
+      - uses: actions/checkout@v6
+      - uses: michaelklishin/rust-build-package-release-action@v3
         with:
           command: extract-changelog
           version: ${{ needs.validate.outputs.version }}
@@ -677,11 +691,141 @@ jobs:
       - run: |
           mkdir -p release
           find artifacts -type f -name '*${{ needs.validate.outputs.version }}*' -exec cp {} release/ \;
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2.6.1
         with:
           body_path: release_notes.md
           files: release/*
 ```
+
+---
+
+## macOS Support
+
+This action supports both Intel and Apple Silicon Macs. Each architecture requires a separate build on a native macOS runner.
+
+### Architecture Targets
+
+| Target | Runner | Hardware | Rust Toolchain |
+|--------|--------|----------|-----------------|
+| `x86_64-apple-darwin` | `macos-15-intel` or `macos-26-intel` | Intel Mac | Native (installed via rustup) |
+| `aarch64-apple-darwin` | `macos-14` or newer | Apple Silicon (M1/M2/M3+) | Native (installed via rustup) |
+
+### Why Separate Runners?
+
+Apple Silicon runners can cross-compile to Intel targets, but building the **native** binary on the target architecture is more reliable for certification and performance. GitHub Actions provides:
+
+- `macos-15-intel` / `macos-26-intel`: Intel hardware (`macos-13` was removed in December 2025)
+- `macos-14` and newer: Apple Silicon hardware
+
+### Building for Intel Macs
+
+```yaml
+- uses: michaelklishin/rust-build-package-release-action@v3
+  with:
+    command: release
+    target: x86_64-apple-darwin
+    archive: 'true'
+    locked: 'true'
+```
+
+Run this on `macos-15-intel` for native Intel compilation.
+
+### Building for Both Architectures
+
+Use a matrix strategy to build both binaries in parallel:
+
+```yaml
+build:
+  runs-on: ${{ matrix.os }}
+  strategy:
+    matrix:
+      include:
+        - target: x86_64-apple-darwin
+          os: macos-15-intel
+        - target: aarch64-apple-darwin
+          os: macos-14
+  steps:
+    - uses: actions/checkout@v6
+    - run: rustup toolchain install stable --profile minimal
+    - uses: michaelklishin/rust-build-package-release-action@v3
+      with:
+        command: release
+        target: ${{ matrix.target }}
+        archive: 'true'
+```
+
+### Homebrew Formulas with Multi-Arch Support
+
+After building for both architectures, generate a Homebrew formula that supports both:
+
+```yaml
+- uses: michaelklishin/rust-build-package-release-action@v3
+  with:
+    command: generate-homebrew
+    version: ${{ needs.validate.outputs.version }}
+    brew-macos-x64-url: 'https://github.com/you/repo/releases/download/v1.0.0/app-1.0.0-x86_64-apple-darwin.tar.gz'
+    brew-macos-x64-sha256: ${{ steps.intel.outputs.sha256 }}
+    brew-macos-arm64-url: 'https://github.com/you/repo/releases/download/v1.0.0/app-1.0.0-aarch64-apple-darwin.tar.gz'
+    brew-macos-arm64-sha256: ${{ steps.arm64.outputs.sha256 }}
+```
+
+Users then install with: `brew install you/tap/app`
+
+The formula automatically selects the correct binary for their architecture.
+
+### Example: macOS Multi-Arch Workflow
+
+See [`examples/macos-multi-arch.yml`](examples/macos-multi-arch.yml) for a complete workflow that:
+
+- Builds both Intel and ARM binaries in parallel on native runners
+- Uploads both to a GitHub Release
+- Generates a Homebrew formula supporting both architectures
+
+---
+
+## Library Crates
+
+Library crates (no binaries) can use a focused subset of this Action:
+
+ * `validate-version` — extract the version from the git tag and (optionally) cross-check it against `Cargo.toml`
+ * `extract-changelog` — pull the release notes for the tagged version out of `CHANGELOG.md`
+ * `publish-crate` — publish to crates.io, with built-in support for [Trusted Publishing](https://crates.io/docs/trusted-publishing) via OIDC (no long-lived `CARGO_REGISTRY_TOKEN` secret)
+ * `publish-dry-run: 'true'` — validate that `cargo publish` would succeed (packaging, `include` and `exclude`, metadata) without actually publishing; ideal for PR checks
+
+A minimal library workflow tagged `v*` looks like:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write    # Required for crates.io Trusted Publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    environment: release
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: validate-version
+          validate-cargo-toml: 'true'
+
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - uses: michaelklishin/rust-build-package-release-action@v3
+        with:
+          command: publish-crate
+          locked: 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+```
+
+Setup: register a Trusted Publisher on crates.io for this repository and workflow filename, and create a GitHub Actions environment named `release`.
+
+For the full workflow — including a dry-run job that runs on every PR and an optional GitHub Release job — see [`examples/publish-crate-only.yml`](examples/publish-crate-only.yml). For library crates that *also* ship pre-built binaries (e.g. a CLI alongside the library), see [`examples/trusted-publishing.yml`](examples/trusted-publishing.yml).
 
 ---
 
@@ -693,9 +837,12 @@ The [`examples/`](examples/) directory contains ready-to-use workflow templates:
 |----------|-------------|
 | [basic-release.yml](examples/basic-release.yml) | Single-platform Linux release |
 | [multi-platform.yml](examples/multi-platform.yml) | Linux, macOS, and Windows builds |
+| [macos-multi-arch.yml](examples/macos-multi-arch.yml) | Intel and Apple Silicon macOS builds with Homebrew formula |
 | [linux-packages.yml](examples/linux-packages.yml) | Debian, RPM, and Alpine packages |
 | [installers.yml](examples/installers.yml) | macOS DMG and Windows MSI |
 | [package-managers.yml](examples/package-managers.yml) | Homebrew, AUR, and Winget manifests |
+| [publish-crate-only.yml](examples/publish-crate-only.yml) | Library crate: crates.io Trusted Publishing, dry-run, GitHub Release |
+| [trusted-publishing.yml](examples/trusted-publishing.yml) | Multi-platform binary release + crates.io Trusted Publishing |
 | [supply_chain_security.yml](examples/supply_chain_security.yml) | SBOM generation and Sigstore signing |
 | [verify-artifacts.yml](examples/verify-artifacts.yml) | Test packages across distributions |
 | [complete.yml](examples/complete.yml) | Full workflow with all features |

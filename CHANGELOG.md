@@ -1,8 +1,43 @@
 # Changelog
 
-## v1.25.0 (in development)
+## v3.2.0 (in development)
 
-(no changes yet)
+No changes yet.
+
+## v3.1.0 (Jul 11, 2026)
+
+### Bug Fixes
+
+ * `test-deb` and `test-rpm` now work in clean distro containers.
+   The action previously failed with `cargo: command not found` because it always compiled itself from source.
+   It now downloads a prebuilt MUSL-based static binary when no Rust toolchain is present
+ * `publish-crate` with `publish-dry-run: true` now works on PRs and branch pushes. Previously it tried to validate the ref as a version tag and failed on refs like `14/merge`
+
+
+## v3.0.0 (May 7, 2026)
+
+### Changes
+
+ * New `brew-copyright` input: generated Homebrew formulas include an MIT license header
+ * Generated Homebrew formulas use `any_of: [...]` for dual licenses (e.g. `Apache-2.0 OR MIT`)
+ * Generated Homebrew formulas use `on_arm do`/`on_intel do` blocks
+ * Intel Mac builds require `macos-15-intel` or `macos-26-intel` (`macos-13` removed Dec 2025)
+ * Bump `actions/checkout` to v6, `softprops/action-gh-release` to 2.6.1
+
+
+## v2.0.0 (Mar 22, 2026)
+
+### New Features
+
+ * A new `publish-crate` command for publishing to crates.io with Trusted Publishing (OIDC) support
+ * `publish-dry-run` is a new input for validating packaging without publishing
+ * New example workflows: `trusted-publishing.yml`, `publish-crate-only.yml`
+ * `validate-version`: the `expected-version` check is now optional (version is extracted from the tag when omitted)
+
+### Internal Changes
+
+ * The Action is now backed by a native binary instead of a collection of Nu shell scripts
+
 
 ## v1.24.0 (Feb 8, 2026)
 

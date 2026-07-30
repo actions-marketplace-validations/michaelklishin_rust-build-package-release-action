@@ -8,7 +8,7 @@ branding:
 
 inputs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Core inputs - universal options used across commands
+  # Core inputs: universal options used across commands
   # ─────────────────────────────────────────────────────────────────────────────
   command:
     description: 'Command to run'
@@ -35,7 +35,7 @@ inputs:
     default: '.'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build options - standard Cargo build flags
+  # Build options: standard Cargo build flags
   # ─────────────────────────────────────────────────────────────────────────────
   pre-build:
     description: 'Shell command to run before cargo build (e.g., frontend build step)'
@@ -71,7 +71,7 @@ inputs:
     default: 'false'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Output options - control artifact generation
+  # Output options: control artifact generation
   # ─────────────────────────────────────────────────────────────────────────────
   archive:
     description: 'Create archive (.tar.gz on Linux/macOS, .zip on Windows)'
@@ -86,7 +86,7 @@ inputs:
     required: false
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Changelog options - for extract-changelog command
+  # Changelog options: for the `extract-changelog` command
   # ─────────────────────────────────────────────────────────────────────────────
   changelog:
     description: 'Path to CHANGELOG.md'
@@ -98,13 +98,13 @@ inputs:
     default: 'release_notes.md'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Version validation - for validate-version command
+  # Version validation: for the `validate-version` command
   # ─────────────────────────────────────────────────────────────────────────────
   tag:
     description: 'Git tag to validate (defaults to GITHUB_REF_NAME)'
     required: false
   expected-version:
-    description: 'Expected version (defaults to NEXT_RELEASE_VERSION variable)'
+    description: 'Expected version to validate against the tag (optional)'
     required: false
   validate-cargo-toml:
     description: 'Also validate that Cargo.toml version matches the tag'
@@ -112,7 +112,7 @@ inputs:
     default: 'false'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Package metadata (pkg-*) - shared across deb/rpm/apk/brew/aur/winget
+  # Package metadata (pkg-*): shared across deb/rpm/apk/brew/aur/winget
   # ─────────────────────────────────────────────────────────────────────────────
   pkg-description:
     description: 'Package description'
@@ -167,7 +167,7 @@ inputs:
     required: false
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # SBOM options (sbom-*) - for generate-sbom command
+  # SBOM options (sbom-*): used by the `generate-sbom` command
   # ─────────────────────────────────────────────────────────────────────────────
   sbom-format:
     description: 'SBOM formats to generate (spdx, cyclonedx, or both)'
@@ -179,10 +179,13 @@ inputs:
     default: 'target/sbom'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Homebrew options (brew-*) - for generate-homebrew command
+  # Homebrew options (brew-*): used by the `generate-homebrew` command
   # ─────────────────────────────────────────────────────────────────────────────
   brew-class:
     description: 'Ruby class name for formula (auto-generated from binary name)'
+    required: false
+  brew-copyright:
+    description: 'Copyright holder for MIT license header (e.g. "2025-2026 Author and Contributors")'
     required: false
   brew-macos-arm64-url:
     description: 'Download URL for macOS ARM64 artifact'
@@ -214,21 +217,21 @@ inputs:
     default: 'target/homebrew'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Signing options - for sign-artifact command
+  # Signing options: for the `sign-artifact` command
   # ─────────────────────────────────────────────────────────────────────────────
   artifact:
     description: 'Path to artifact (for signing or testing)'
     required: false
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Artifact collection options - for collect-artifacts command
+  # Artifact collection options: for the `collect-artifacts` command
   # ─────────────────────────────────────────────────────────────────────────────
   base-url:
     description: 'Base URL for artifact downloads (e.g., https://github.com/user/repo/releases/download/v1.0.0)'
     required: false
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Release body options - for format-release command
+  # Release body options: for the `format-release` command
   # ─────────────────────────────────────────────────────────────────────────────
   artifacts-dir:
     description: 'Directory containing release artifacts'
@@ -257,7 +260,7 @@ inputs:
     required: false
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # AUR options (aur-*) - for generate-aur command
+  # AUR options (aur-*): for the `generate-aur` command
   # ─────────────────────────────────────────────────────────────────────────────
   aur-name:
     description: 'AUR package name (defaults to binary name)'
@@ -284,7 +287,7 @@ inputs:
     default: 'target/aur'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Winget options (winget-*) - for generate-winget command
+  # Winget options (winget-*): for the `generate-winget` command
   # ─────────────────────────────────────────────────────────────────────────────
   winget-publisher:
     description: 'Publisher display name'
@@ -322,7 +325,15 @@ inputs:
     default: 'target/winget'
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Artifact testing options - for test-deb, test-rpm, test-windows commands
+  # Crate publishing options: for the `publish-crate` command
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-dry-run:
+    description: 'Run cargo publish --dry-run only (validates packaging without publishing)'
+    required: false
+    default: 'false'
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Artifact testing options: for `test-deb`, `test-rpm`, `test-windows` commands
   # ─────────────────────────────────────────────────────────────────────────────
   checksum-file:
     description: 'Path to checksum file (.sha256, .sha512, or .b2) for verification'
@@ -491,6 +502,10 @@ outputs:
     description: 'SHA256 of Windows ARM64 artifact'
     value: ${{ steps.run.outputs.windows_arm64_sha256 }}
 
+  published:
+    description: 'Whether the crate was published (true/false, false for dry-run)'
+    value: ${{ steps.run.outputs.published }}
+
   result:
     description: 'Test result (success/failure) for test-* commands'
     value: ${{ steps.run.outputs.result }}
@@ -498,21 +513,53 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Setup Nu shell
-      # v3.17
-      uses: hustcer/setup-nu@0000000ae6a4e242e802c943f465373b70b07469
-      with:
-        version: '0.110.0'
+    # The action is a Rust binary. Build from source when a toolchain is present;
+    # otherwise (e.g. test-deb/test-rpm in a clean distro container with no cargo)
+    # download the prebuilt musl-static binary that release.yaml ships per release.
+    - name: Provide action binary
+      shell: bash
+      # Contexts passed via env (not interpolated into the script) per GitHub
+      # script-injection hardening guidance.
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPO: ${{ github.action_repository }}
+      run: |
+        set -euo pipefail
+        if command -v cargo >/dev/null 2>&1; then
+          cargo build --release --manifest-path "$ACTION_PATH/Cargo.toml"
+          exit 0
+        fi
+        case "$(uname -m)" in
+          x86_64|amd64)  target="x86_64-unknown-linux-musl" ;;
+          aarch64|arm64) target="aarch64-unknown-linux-musl" ;;
+          *) echo "::error::no cargo and no prebuilt binary for $(uname -m)"; exit 1 ;;
+        esac
+        # Minimal base images ship without curl (mirrors download.rs::ensure_curl).
+        if ! command -v curl >/dev/null 2>&1; then
+          (apt-get update -qq && apt-get install -y -qq curl) \
+            || dnf install -y -q curl || microdnf install -y curl
+        fi
+        # Precise version pins fetch that release; floating major/SHA pins fetch latest.
+        if [[ "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          base="https://github.com/$ACTION_REPO/releases/download/$ACTION_REF"
+        else
+          base="https://github.com/$ACTION_REPO/releases/latest/download"
+        fi
+        bin="$ACTION_PATH/target/release/rust-release-action"
+        mkdir -p "$(dirname "$bin")"
+        curl -fsSL "$base/rust-release-action-$target" -o "$bin"
+        chmod +x "$bin"
 
     - name: Run command
       id: run
-      shell: nu {0}
+      shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        $env.NU_LIB_DIRS = [$"($env.GITHUB_ACTION_PATH)/scripts"]
-        nu $"($env.GITHUB_ACTION_PATH)/scripts/dispatch.nu"
+        "$ACTION_PATH/target/release/rust-release-action" "$INPUT_COMMAND"
       env:
-        GITHUB_ACTION_PATH: ${{ github.action_path }}
+        # Passed via env so it resolves to the same path as in "Provide action binary".
+        ACTION_PATH: ${{ github.action_path }}
         # All inputs passed as INPUT_* environment variables
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_VERSION: ${{ inputs.version }}
@@ -556,6 +603,7 @@ runs:
         INPUT_SBOM_FORMAT: ${{ inputs.sbom-format }}
         INPUT_SBOM_DIR: ${{ inputs.sbom-dir }}
         INPUT_BREW_CLASS: ${{ inputs.brew-class }}
+        INPUT_BREW_COPYRIGHT: ${{ inputs.brew-copyright }}
         INPUT_BREW_MACOS_ARM64_URL: ${{ inputs.brew-macos-arm64-url }}
         INPUT_BREW_MACOS_ARM64_SHA256: ${{ inputs.brew-macos-arm64-sha256 }}
         INPUT_BREW_MACOS_X64_URL: ${{ inputs.brew-macos-x64-url }}
@@ -597,3 +645,4 @@ runs:
         INPUT_MSI_CHECKSUM_FILE: ${{ inputs.msi-checksum-file }}
         INPUT_DOWNLOAD_FROM_RELEASE: ${{ inputs.download-from-release }}
         INPUT_ARCH: ${{ inputs.arch }}
+        INPUT_PUBLISH_DRY_RUN: ${{ inputs.publish-dry-run }}

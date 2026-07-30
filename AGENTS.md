@@ -2,8 +2,8 @@
 
 ## Project Overview
 
-`rust-build-package-release-action` is an **opinionated** GitHub Action that automates release workflows for Rust projects,
-built as a collection of Nu shell scripts.
+`rust-build-package-release-action` is an opinionated GitHub Action that automates release workflows for Rust projects,
+built as a single Rust binary crate with clap subcommands (edition 2024, rust-version 1.85).
 
 This is a conventions-based, opinionated release process extracted from:
 
@@ -16,18 +16,14 @@ This is a conventions-based, opinionated release process extracted from:
 Run all tests:
 
 ```bash
-nu tests/run.nu
+cargo test
 ```
 
-Run individual scripts:
+Run clippy:
 
 ```bash
-nu scripts/extract-changelog.nu
-nu scripts/validate-version.nu
-nu scripts/get-version.nu
+cargo clippy --all-targets -- -D warnings
 ```
-
-Note: this requires taking care of some script-specific environment variables.
 
 See `CONTRIBUTING.md` as well.
 
@@ -36,65 +32,140 @@ For verifying YAML file syntax, use `yq`, Ruby or Python YAML modules (whichever
 ## Key Files
 
  * `action.yml`: GitHub Action definition
- * `scripts/dispatch.nu`: command dispatcher (routes inputs to scripts)
- * `scripts/common.nu`: shared utilities (`cargo-build`, `generate-checksums`, `output-build-results`)
- * `scripts/extract-changelog.nu`: extracts release details from a change log file (see `rabbitmqadmin-ng` for example)
- * `scripts/validate-changelog.nu`: validates that a changelog entry exists for a version
- * `scripts/validate-version.nu`: version validation logic, including pre-release versions
- * `scripts/collect-artifacts.nu`: collects artifacts, computes checksums, outputs structured data for Homebrew/Winget
- * `scripts/release.nu`: unified release command that auto-selects platform from target triple
- * `scripts/get-version.nu`: reads version from `Cargo.toml`
- * `scripts/generate-sbom.nu`: generates SPDX and CycloneDX SBOMs via cargo-sbom
- * `scripts/release-linux.nu`: Linux build script
- * `scripts/release-linux-deb.nu`: Linux .deb package via nfpm
- * `scripts/release-linux-rpm.nu`: Linux .rpm package via nfpm
- * `scripts/release-linux-apk.nu`: Linux .apk package via nfpm
- * `scripts/release-macos.nu`: macOS build script
- * `scripts/release-macos-dmg.nu`: macOS .dmg installer via hdiutil
- * `scripts/release-windows.nu`: Windows build script
- * `scripts/release-windows-msi.nu`: Windows MSI installer via cargo-wix
- * `scripts/generate-homebrew.nu`: Homebrew formula generator
- * `scripts/generate-aur.nu`: Arch Linux PKGBUILD generator
- * `scripts/generate-winget.nu`: Winget manifest generator
- * `scripts/sign-artifact.nu`: Sigstore/cosign signing
- * `scripts/format-release.nu`: GitHub Release body formatter
- * `scripts/test-common.nu`: shared functions for artifact testing
- * `scripts/test-deb.nu`: tests Debian packages (install, verify version, uninstall)
- * `scripts/test-rpm.nu`: tests RPM packages (install, verify version, uninstall)
- * `scripts/test-windows.nu`: tests Windows binaries and MSI installers
- * `scripts/download-release.nu`: downloads artifacts from GitHub releases
- * `scripts/get-release-version.nu`: fetches latest release version from GitHub
- * `tests/run.nu`: Nu shell test runner
- * `tests/nu/*.nu`: unit tests for pure functions
- * `examples/*.yml`: workflow examples for a few common scenarios
+ * `Cargo.toml`: crate manifest
+ * `src/main.rs`: clap CLI and command dispatcher (routes subcommands to modules)
+ * `src/lib.rs`: shared utilities (`env_or`, `parse_comma_list`) and module re-exports
+ * `src/error.rs`: error type and `Result` alias
+ * `src/output.rs`: GitHub Actions output helpers (`output`, `output_multiline`, `print_hr`)
+ * `src/platform.rs`: target triple parsing and platform detection
+ * `src/version.rs`: version validation, `get-version`, `get-release-version`
+ * `src/cargo_info.rs`: reads package metadata from `Cargo.toml`
+ * `src/changelog.rs`: extracts and validates changelog entries
+ * `src/build.rs`: cargo build orchestration
+ * `src/archive.rs`: archive file listing, doc copying, include handling
+ * `src/checksum.rs`: SHA-256, SHA-512, BLAKE2 checksum generation and verification
+ * `src/collect_artifacts.rs`: collects artifacts, computes checksums, outputs structured data for Homebrew/Winget
+ * `src/release.rs`: unified release command that auto-selects platform from target triple
+ * `src/nfpm.rs`: nfpm config generation for .deb/.rpm/.apk packages
+ * `src/homebrew.rs`: Homebrew formula generator
+ * `src/aur.rs`: Arch Linux PKGBUILD generator
+ * `src/winget.rs`: Winget manifest generator
+ * `src/format_release.rs`: GitHub Release body formatter
+ * `src/sbom.rs`: SPDX and CycloneDX SBOM generation via cargo-sbom
+ * `src/sign.rs`: Sigstore/cosign artifact signing
+ * `src/download.rs`: downloads artifacts from GitHub releases
+ * `src/testing.rs`: tests Debian/RPM packages and Windows binaries
+ * `src/tools.rs`: external tool installation (cross, cargo-zigbuild, nfpm, etc.)
+ * `tests/test_helpers.rs`: shared test utilities (`create_temp_file`, `create_temp_text_file`)
+ * `tests/*_tests.rs`: unit tests for each module
+ * `tests/*_proptests.rs`: property-based tests (proptest) for version, changelog, platform
+ * `examples/*.yml`: workflow examples for common scenarios
 
-## Nu Script Style
+## macOS Support
 
- * Format all Nu scripts with [nufmt](https://github.com/nushell/nufmt) before committing
- * Use 4-space indentation (nufmt default)
- * Avoid multiline string interpolation in heredoc style; use array-based string building with `| str join "\n"` instead
- * Use `def main []` as script entry point
- * Use `$env.VARIABLE?` with `| default ""` for optional env vars
- * Exit with code 1 on errors, produce brief but helpful messages
- * Write to `$env.GITHUB_OUTPUT` for action outputs
- * Only add important comments
- * For regex patterns in `where` clauses, assign the pattern to a variable first to avoid breaking `nufmt`
+Building macOS binaries requires a native runner:
 
-## Git Conventions
+ * Intel Mac (`x86_64-apple-darwin`): use `macos-15-intel` or `macos-26-intel` runners (`macos-13` was removed in December 2025)
+ * Apple Silicon (`aarch64-apple-darwin`): use `macos-14` or newer runners for native compilation
+ * Building for Intel on Apple Silicon runners is technically possible but not recommended (cross-compilation adds complexity)
+ * Each architecture needs a separate build job with its corresponding runner
+ * The action generates Homebrew formulas that auto-select the correct binary per architecture
+ * Platform detection in `src/platform.rs` already handles both: `macos-x64` and `macos-arm64`
 
+For workflows, use a matrix strategy to build both in parallel. See `examples/macos-multi-arch.yml` for a complete example.
+
+## Rust Style
+
+ * Use `use` statements at the top module level, never in function scope
+ * Avoid fully qualified type paths (e.g. `std::fmt::Display`) unless needed for disambiguation
+ * All tests go in `tests/` as integration tests, not inline `#[cfg(test)]` modules
+ * Use `LazyLock<Mutex<()>>` to serialise tests that modify process-wide state (env vars, CWD)
+ * Mark `env::set_var` and `env::remove_var` calls as `unsafe` with a safety comment
+ * Format with `cargo fmt --all`, lint with `cargo clippy --all-features --all`
+
+## Git and GitHub Conventions
+
+ * Do not commit changes automatically without an explicit permission to do so
  * Never add yourself to commit co-authors list
  * Never mention yourself in commit messages
+ * If a `gh` operation fails with an authentication failure, unset `GITHUB_TOKEN` and retry once, as `gh` may be configured to fetch the token differently
 
-## Markdown Style
+## Comments, Writing Style and Voice
+
+Only add very important comments to the tests and the implementation.
+
+### Voice
+
+Write like an engineer who values clarity and simplicity. This applies
+to all prose: design docs, analyses, notes, and commit messages.
+
+ * Plain and factual: state the why in one line, never narrate the what
+ * Literal mechanism over metaphor: name the actual thing, not an image of it
+ * Prefer the plainest word. No coined verbs, no jargon for its own sake
+ * No flourish, no editorializing, no imagery. Real domain terms are fine
+ * If a sentence needs a second clause to justify itself, it is probably too clever
+ * Plain full sentences over compressed clever noun phrases: "a helper
+   crate", not "a `tower`-shaped convenience"
+ * State guarantees and behavior explicitly; do not leave them implied
+   by jargon
+ * Name tools and platforms precisely: `rustc` 1.92, edition 2024,
+   crates.io, WebAssembly
+ * No bold for emphasis; bold is for structural labels only, and sparingly
+ * No "term — explanation" em-dash glosses: use ": " or parentheses
+ * These vocabulary rules apply to identifiers too: test function names,
+   helper modules, and fixture names use the same plain words as prose
+
+### Writing and Markdown Style
 
  * Never add full stops to Markdown list items
+ * Use "X and Y" in prose, not "X / Y" slash-shorthand. Exceptions: unit
+   fractions (`bytes/sec`), single-concept abbreviations (`I/O`), and paths
+   or code (`tests/unit/`, `src/lib.rs`)
+ * Wrap code identifiers in backticks in prose: types like `Vec<T>`, traits
+   like `Display`, functions like `Iterator::next`, modules, file names, and paths
+ * Avoid robotic labels such as `**Thing / other:**`; write a plain sentence or a simple label
+ * Match the existing conventions of the file and subdirectory you are
+   editing: bullet character, heading depth, ID schemes, and table shape
+   vary by project, and the local choice wins
 
-## Reviews
+## Releases
 
-Perform up to twenty iterative reviews after completing a task. Look for:
+### How to Roll (Produce) a New Major Release
 
- * Meaningful improvements
- * Test coverage gaps
- * Deviations from the instructions in `AGENTS.md`
+GitHub Actions use major version tags (`@v1`, `@v2`, `@v3`) as their public API.
+Consumers pin to `@vN` and automatically receive all non-breaking updates.
 
-Stop iterating when three iterations in a row show no meaningful improvements.
+Suppose the current development version in `Cargo.toml` is `N.0.0` and `CHANGELOG.md` has
+a `## vN.0.0 (in development)` section at the top.
+
+To produce a new major release:
+
+ 1. Update the changelog: replace `(in development)` with today's date, e.g. `(Mar 22, 2026)`. Make sure all notable changes since the previous release are listed
+ 2. Commit with the message `N.0.0` (just the version number, nothing else)
+ 3. Tag the commit: `git tag vN.0.0`
+ 4. Move the floating major tag to the same commit: `git tag -f vN`
+ 5. Bump the dev version: set `Cargo.toml` version to `(N+1).0.0`
+ 6. Add a new `## v(N+1).0.0 (in development)` section to `CHANGELOG.md` with `No changes yet.` underneath
+ 7. Commit with the message `Bump dev version`
+ 8. Push: `git push && git push --tags --force`
+
+The `--force` on the tag push is required because the floating `vN` tag already exists
+on the remote and must be moved forward.
+
+### Notes
+
+ * This crate is `publish = false`: there is no crates.io publishing step
+ * The floating major tag (e.g. `v2`) is what consumers reference in their workflows
+ * The precise tag (e.g. `v2.0.0`) is for changelog traceability
+
+## Iterative Post-Implementation Review (IPIR)
+
+Review the changes very carefully and holistically for correctness and safety,
+opportunities to meaningfully simplify the implementation without losing
+fidelity and effectiveness, the use of Rust idioms, the rich type system
+patterns, meaningful test coverage, API usability and whether the changes are
+worth adopting to begin with.
+
+Look hard for ways to meaningfully improve both the tests and the implementation.
+
+Perform 5 such iterations (holistic analysis runs).
